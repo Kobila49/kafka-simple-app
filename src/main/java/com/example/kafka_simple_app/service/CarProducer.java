@@ -23,12 +23,10 @@ public class CarProducer {
     }
 
     public SentMessageDTO send(CarDTO carDTO) {
-        // The key picks the partition (hash of the key, modulo the partition count), so every
-        // car of the same brand lands on the same partition and is consumed in the order sent.
+        // The key's hash picks the partition, so all cars of a brand stay in one partition, in order.
         String key = carDTO.brand();
 
-        // send() is asynchronous. Waiting for the broker's acknowledgement here keeps the demo
-        // simple and lets the HTTP response show where the message was stored.
+        // Waits for the broker's acknowledgement, so the response can say where the message went.
         RecordMetadata metadata = kafkaTemplate.send(topicName, key, carDTO).join().getRecordMetadata();
 
         log.info("Sent key={} to partition={} offset={}: {}", key, metadata.partition(), metadata.offset(), carDTO);

@@ -4,6 +4,8 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 The purpose of this project is to demonstrate how Kafka works, so favor changes that make Kafka behavior visible and easy to follow over production-style abstraction. `README.md` walks through demo scenarios with exact commands and expected log output (including which brand lands on which partition). When you change Kafka behavior, log messages, topic names or partition counts, update the README to match.
 
+Keep code comments to what the code can't say itself: why something is done, or behavior that isn't visible in the code. Don't restate the code, a method name or a test name. Kafka concepts are explained in the README, not in comments.
+
 ## Build, run & test
 
 Spring Boot 4.2 / Java 25 / Gradle 9.9 (wrapper). The build uses a Java 25 toolchain, so Gradle itself can run on any JDK 17+ and finds JDK 25 on its own (e.g. from `~/.jdks`). Docker is required for running the app and for the tests.

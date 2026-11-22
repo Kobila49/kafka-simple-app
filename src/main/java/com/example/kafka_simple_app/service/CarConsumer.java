@@ -21,19 +21,15 @@ public class CarConsumer {
     }
 
     /**
-     * Receives the whole Kafka record rather than just the payload, to show what a consumer
-     * actually gets: the key and value plus the partition and offset the record was read from.
-     * <p>
-     * Any exception thrown here is handled by the {@code DefaultErrorHandler} from
-     * {@code KafkaErrorHandlingConfig}: retried, then published to the dead-letter topic.
+     * Takes the whole record rather than just the {@code CarDTO}, to show the partition and offset.
+     * Exceptions go to the error handler in {@code KafkaErrorHandlingConfig}.
      */
     @KafkaListener(topics = "${topic.name}")
     public void consume(ConsumerRecord<String, CarDTO> consumerRecord) {
         log.info("Consumed key={} partition={} offset={}: {}", consumerRecord.key(),
                 consumerRecord.partition(), consumerRecord.offset(), consumerRecord.value());
 
-        // The REST API deliberately accepts any car, so you can send invalid ones and watch
-        // what the consumer side does with them.
+        // Validated here, not in the REST API, so you can send invalid cars and watch what happens.
         CarDTO car = consumerRecord.value();
         if (car.price() == null || car.price().signum() <= 0) {
             throw new InvalidCarException("Price must be positive: " + car);
