@@ -209,6 +209,8 @@ Attempt 3 failed for key=Honda partition=1 offset=...: ConnectException: Connect
 Gave up on key=Honda partition=1 offset=..., published it to cars-dlt
 ```
 
+The exception can differ between attempts. For example, the first attempt may fail on a database connection that was open when the database went away, and the next ones because no new connection can be opened. They still count as one series of 3 attempts; by default, Spring Kafka would start counting again when the exception type changes (see `KafkaErrorHandlingConfig`).
+
 Start the database again with `docker compose start postgres`. The Civic is in the dead-letter topic, not in the database: dead-lettered messages need to be reprocessed explicitly, for example with a replay as in scenario 3.
 
 ## Tests

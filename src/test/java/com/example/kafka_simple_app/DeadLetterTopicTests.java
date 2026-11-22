@@ -1,5 +1,6 @@
 package com.example.kafka_simple_app;
 
+import com.example.kafka_simple_app.entity.Car;
 import com.example.kafka_simple_app.repository.CarRepository;
 import com.example.kafka_simple_app.service.InvalidCarException;
 import org.apache.kafka.clients.consumer.Consumer;
@@ -14,6 +15,7 @@ import org.apache.kafka.common.header.Header;
 import org.apache.kafka.common.serialization.StringDeserializer;
 import org.apache.kafka.common.serialization.StringSerializer;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentMatcher;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
@@ -21,7 +23,10 @@ import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
 import org.springframework.kafka.support.KafkaHeaders;
+import org.springframework.test.context.bean.override.mockito.MockitoSpyBean;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.transaction.CannotCreateTransactionException;
+import org.springframework.transaction.TransactionSystemException;
 import org.testcontainers.kafka.KafkaContainer;
 
 import java.nio.charset.StandardCharsets;
@@ -34,12 +39,19 @@ import java.util.stream.StreamSupport;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.awaitility.Awaitility.await;
+import static org.mockito.ArgumentMatchers.argThat;
+import static org.mockito.Mockito.doThrow;
+import static org.mockito.Mockito.times;
+import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
  * Messages the consumer can't process end up on the dead-letter topic instead of blocking the
- * partition. Shares the application context (and containers) with the other tests.
+ * partition.
+ *
+ * <p>The repository is a spy, so a test can make the database fail. Bean overrides are part of
+ * the context cache key, so this class gets its own application context (and containers).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -49,7 +61,7 @@ class DeadLetterTopicTests {
     @Autowired
     private MockMvc mockMvc;
 
-    @Autowired
+    @MockitoSpyBean
     private CarRepository carRepository;
 
     @Autowired
@@ -97,6 +109,33 @@ class DeadLetterTopicTests {
         await().atMost(Duration.ofSeconds(30)).until(() ->
                 StreamSupport.stream(carRepository.findAll().spliterator(), false)
                         .anyMatch(car -> car.getModel().equals("Niva")));
+    }
+
+    @Test
+    void failingCarIsTriedThreeTimesEvenWhenTheErrorChanges() throws Exception {
+        // Like a database that goes down while the app holds an open connection: the first attempt
+        // fails while rolling back on that connection, the next ones can't connect at all.
+        doThrow(new TransactionSystemException("Could not roll back: connection is closed"))
+                .doThrow(new CannotCreateTransactionException("Could not open a connection"))
+                .when(carRepository).save(argThat(hasModel("353")));
+
+        mockMvc.perform(post("/api/cars")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("""
+                                {"brand": "Wartburg", "model": "353", "price": 5000}
+                                """))
+                .andExpect(status().isAccepted());
+
+        ConsumerRecord<String, String> deadLetter = awaitDeadLetter("Wartburg");
+
+        // 1 attempt + 2 retries, although the exception type changed after the first attempt.
+        verify(carRepository, times(3)).save(argThat(hasModel("353")));
+        assertThat(header(deadLetter, KafkaHeaders.DLT_EXCEPTION_CAUSE_FQCN))
+                .isEqualTo(CannotCreateTransactionException.class.getName());
+    }
+
+    private static ArgumentMatcher<Car> hasModel(String model) {
+        return car -> car != null && model.equals(car.getModel());
     }
 
     /** Reads the dead-letter topic from the beginning until a record with the given key shows up. */

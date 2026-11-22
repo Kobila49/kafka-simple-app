@@ -43,6 +43,12 @@ public class KafkaErrorHandlingConfig {
         // with temporary problems such as the database being down.
         DefaultErrorHandler errorHandler = new DefaultErrorHandler(deadLetterPublisher, new FixedBackOff(1000L, 2L));
 
+        // Count all attempts at a record together, whatever exception each one throws. By default,
+        // Spring Kafka starts counting again when the exception type changes. When the database goes
+        // down, the first attempt often fails differently (rolling back on a connection that was
+        // just closed) than the next ones (can't connect), so the record would be tried 4 times.
+        errorHandler.setResetStateOnExceptionChange(false);
+
         // Retrying won't fix bad data, so skip the retries for it. Deserialization failures are
         // already in this category by default.
         errorHandler.addNotRetryableExceptions(InvalidCarException.class);
