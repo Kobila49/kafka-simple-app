@@ -10,15 +10,15 @@ import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.stereotype.Service;
 
 @Service
-public class KafkaProducerService {
+public class CarProducer {
 
-    private static final Logger log = LoggerFactory.getLogger(KafkaProducerService.class);
+    private static final Logger log = LoggerFactory.getLogger(CarProducer.class);
 
     @Value("${topic.name}")
     private String topicName;
     private final KafkaTemplate<String, CarDTO> kafkaTemplate;
 
-    public KafkaProducerService(KafkaTemplate<String, CarDTO> kafkaTemplate) {
+    public CarProducer(KafkaTemplate<String, CarDTO> kafkaTemplate) {
         this.kafkaTemplate = kafkaTemplate;
     }
 

@@ -2,7 +2,7 @@ server:
   port: 9001
 
 topic:
-  name: topic.igor
+  name: cars
   partitions: 3
 
 spring:

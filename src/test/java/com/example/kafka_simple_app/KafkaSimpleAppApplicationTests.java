@@ -44,12 +44,12 @@ class KafkaSimpleAppApplicationTests {
 
     @Test
     void postedCarTravelsThroughKafkaIntoTheDatabase() throws Exception {
-        mockMvc.perform(post("/kafka-igor/producer")
+        mockMvc.perform(post("/api/cars")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"brand": "Volvo", "model": "XC60", "price": 45000}
                                 """))
-                .andExpect(status().isOk())
+                .andExpect(status().isAccepted())
                 .andExpect(jsonPath("$.topic").value(topicName))
                 .andExpect(jsonPath("$.key").value("Volvo"))
                 .andExpect(jsonPath("$.partition").isNumber())
@@ -61,7 +61,7 @@ class KafkaSimpleAppApplicationTests {
                     assertThat(car.getPrice()).isEqualTo(BigInteger.valueOf(45000));
                 }));
 
-        mockMvc.perform(get("/kafka-igor/cars"))
+        mockMvc.perform(get("/api/cars"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[?(@.model == 'XC60')].brand").value("Volvo"));
     }
@@ -81,12 +81,12 @@ class KafkaSimpleAppApplicationTests {
     }
 
     private String sendCar(String brand, String model) throws Exception {
-        return mockMvc.perform(post("/kafka-igor/producer")
+        return mockMvc.perform(post("/api/cars")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"brand": "%s", "model": "%s", "price": 10000}
                                 """.formatted(brand, model)))
-                .andExpect(status().isOk())
+                .andExpect(status().isAccepted())
                 .andReturn().getResponse().getContentAsString();
     }
 

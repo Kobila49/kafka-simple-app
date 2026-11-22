@@ -30,12 +30,12 @@ There is no linter or formatter task in the build. The IntelliJ project has the 
 ## Architecture
 
 ```
-POST /kafka-igor/producer (CarDTO JSON)
-  → KafkaProducerService: key = brand, waits for the ack, returns SentMessageDTO (partition/offset)
-  → topic `${topic.name}` (topic.igor, `${topic.partitions}` = 3 partitions)
-  → KafkaConsumer (@KafkaListener, gets ConsumerRecord) → validates → Car entity → CarRepository
-     on exception → DefaultErrorHandler → retry → DeadLetterPublishingRecoverer → `topic.igor-dlt`
-GET /kafka-igor/cars → DatabaseService → CarRepository.findAll()
+POST /api/cars (CarDTO JSON) → CarController, answers 202 Accepted
+  → CarProducer: key = brand, waits for the ack, returns SentMessageDTO (partition/offset)
+  → topic `${topic.name}` (cars, `${topic.partitions}` = 3 partitions)
+  → CarConsumer (@KafkaListener, gets ConsumerRecord) → validates → Car entity → CarRepository
+     on exception → DefaultErrorHandler → retry → DeadLetterPublishingRecoverer → `cars-dlt`
+GET /api/cars → DatabaseService → CarRepository.findAll()
 ```
 
 - **All Kafka client settings are Spring Boot properties** in `application.yml` (`spring.kafka.*`); there are no hand-built producer/consumer factories. Boot applies the `DefaultErrorHandler` bean from `KafkaErrorHandlingConfig` to the auto-configured listener container factory.
@@ -43,8 +43,7 @@ GET /kafka-igor/cars → DatabaseService → CarRepository.findAll()
 - **Error handling** (`KafkaErrorHandlingConfig`): `FixedBackOff(1s, 2 retries)`, then dead-letter. `InvalidCarException` (price ≤ 0, thrown by the consumer) and deserialization failures are not retryable and go straight to the DLT. The DLT keeps the source partition, so `KafkaTopicConfig` declares it with the same partition count. The recoverer has two templates: `byte[]` values (from deserialization failures) are published as raw bytes, everything else as JSON. A `RetryListener` logs each failed attempt and each dead-lettered record.
 - Spring Kafka 4 names the default DLT `<topic>-dlt`, not the older `<topic>.DLT`.
 - `spring.datasource.hikari.connection-timeout` is 3s on purpose, so the "database down → retries → DLT" demo finishes quickly.
-- `CarDTO` is the Kafka payload and `Car` is the JPA entity (no Lombok). The GET endpoint returns entities directly. If you add a field, update both classes plus `KafkaConsumer.carEntity`.
-- The app's `KafkaConsumer` class has the same simple name as Kafka's `org.apache.kafka.clients.consumer.KafkaConsumer`, so tests that need a raw Kafka consumer use the fully qualified name.
+- `CarDTO` is the Kafka payload and `Car` is the JPA entity (no Lombok). The GET endpoint returns entities directly. If you add a field, update both classes plus `CarConsumer.carEntity`.
 
 ## Tests
 

@@ -3,11 +3,11 @@
 A small Spring Boot application for learning how Apache Kafka works. A REST endpoint produces car messages to a Kafka topic, a consumer reads them and stores them in PostgreSQL, and a second endpoint lists what was stored:
 
 ```
-POST /kafka-igor/producer ──► KafkaProducerService ──► topic.igor (3 partitions) ──► KafkaConsumer ──► PostgreSQL
-                                                              │                           │
-                                                              │                  fails? retry, then
-                                                              │                           ▼
-GET /kafka-igor/cars ◄── DatabaseService ◄── PostgreSQL       └───────────────────  topic.igor-dlt
+POST /api/cars ──► CarProducer ──► topic "cars" (3 partitions) ──► CarConsumer ──► PostgreSQL
+                                                                        │
+                                                              fails? retry, then
+                                                                        ▼
+GET /api/cars ◄── DatabaseService ◄── PostgreSQL                  topic "cars-dlt"
 ```
 
 ## Requirements
@@ -25,7 +25,7 @@ This starts the containers from `compose.yaml` (Kafka, Kafka UI, PostgreSQL), wa
 
 | What | Where |
 |---|---|
-| REST API | http://localhost:9001/kafka-igor |
+| REST API | http://localhost:9001/api/cars |
 | Kafka UI (topics, messages, consumer groups) | http://localhost:8080 |
 | Kafka broker | `localhost:9092` |
 | PostgreSQL | `localhost:5432`, database/user/password `cars` |
@@ -33,16 +33,18 @@ This starts the containers from `compose.yaml` (Kafka, Kafka UI, PostgreSQL), wa
 Send a car:
 
 ```bash
-curl -X POST localhost:9001/kafka-igor/producer \
+curl -X POST localhost:9001/api/cars \
   -H 'Content-Type: application/json' \
   -d '{"brand": "Volvo", "model": "XC60", "price": 45000}'
 ```
 
-The response says where Kafka stored the message:
+The API answers `202 Accepted` with where Kafka stored the message:
 
 ```json
-{ "topic": "topic.igor", "key": "Volvo", "partition": 0, "offset": 0 }
+{ "topic": "cars", "key": "Volvo", "partition": 0, "offset": 0 }
 ```
+
+"Accepted" because at this point the car is only in Kafka. The consumer stores it in the database asynchronously, a moment later.
 
 and the app log shows both sides:
 
@@ -51,7 +53,7 @@ Sent key=Volvo to partition=0 offset=0: CarDTO[brand=Volvo, model=XC60, price=45
 Consumed key=Volvo partition=0 offset=0: CarDTO[brand=Volvo, model=XC60, price=45000]
 ```
 
-List stored cars with `curl localhost:9001/kafka-igor/cars`. To start over with empty Kafka and PostgreSQL: `docker compose down -v`.
+List stored cars with `curl localhost:9001/api/cars`. To start over with empty Kafka and PostgreSQL: `docker compose down -v`.
 
 ## Where each Kafka concept lives
 
@@ -59,8 +61,8 @@ List stored cars with `curl localhost:9001/kafka-igor/cars`. To start over with 
 |---|---|
 | Producer, serialization, consumer group, offset reset, concurrency | `src/main/resources/application.yml` (`spring.kafka.*`) |
 | Topic and partitions, dead-letter topic | `configuration/KafkaTopicConfig.java` |
-| Message key → partition, waiting for the broker's acknowledgement | `service/KafkaProducerService.java` |
-| Consumer, `ConsumerRecord` (key, partition, offset) | `service/KafkaConsumer.java` |
+| Message key → partition, waiting for the broker's acknowledgement | `service/CarProducer.java` |
+| Consumer, `ConsumerRecord` (key, partition, offset) | `service/CarConsumer.java` |
 | Retries and dead-lettering | `configuration/KafkaErrorHandlingConfig.java` |
 | The broker itself (KRaft mode, listeners) | `compose.yaml` |
 
@@ -72,12 +74,12 @@ The car's brand is the message key. Kafka hashes the key to pick a partition, so
 
 ```bash
 for brand in Volvo Honda Fiat Volvo; do
-  curl -s -X POST localhost:9001/kafka-igor/producer -H 'Content-Type: application/json' \
+  curl -s -X POST localhost:9001/api/cars -H 'Content-Type: application/json' \
     -d "{\"brand\": \"$brand\", \"model\": \"Demo\", \"price\": 1000}"; echo
 done
 ```
 
-Offsets count up separately in each partition: the second Volvo gets the next offset in partition 0. In Kafka UI, open **Topics → topic.igor → Messages** to see each message with its partition, offset and key.
+Offsets count up separately in each partition: the second Volvo gets the next offset in partition 0. In Kafka UI, open **Topics → cars → Messages** to see each message with its partition, offset and key.
 
 ### 2. Consumer groups share the partitions
 
@@ -94,11 +96,11 @@ docker compose up -d
 When the second instance joins, the first one's log shows the rebalance:
 
 ```
-car-db-writer: partitions revoked: [topic.igor-0, topic.igor-1, topic.igor-2]
-car-db-writer: partitions assigned: [topic.igor-0, topic.igor-1]
+car-db-writer: partitions revoked: [cars-0, cars-1, cars-2]
+car-db-writer: partitions assigned: [cars-0, cars-1]
 ```
 
-and the second gets `[topic.igor-2]`. Send the Volvo, Honda and Fiat cars from scenario 1 again: the Fiat is consumed by the instance that owns partition 2. Then stop one instance and watch the other take all partitions back.
+and the second gets `[cars-2]`. Send the Volvo, Honda and Fiat cars from scenario 1 again: the Fiat is consumed by the instance that owns partition 2. Then stop one instance and watch the other take all partitions back.
 
 A third instance would get one partition each. A fourth would get none and sit idle: **a group can't use more consumers than the topic has partitions**. Instead of more instances, you can also run more consumer threads in one instance with `--spring.kafka.listener.concurrency=3`.
 
@@ -120,7 +122,7 @@ Kafka doesn't delete a message when it's consumed. Each consumer group only stor
 ```bash
 echo 'Volvo:{"brand": "Volvo", "model": "V70", "price": 3000}' | \
   docker compose exec -T kafka /opt/kafka/bin/kafka-console-producer.sh \
-  --bootstrap-server localhost:9092 --topic topic.igor \
+  --bootstrap-server localhost:9092 --topic cars \
   --reader-property parse.key=true --reader-property key.separator=:
 ```
 
@@ -130,7 +132,7 @@ echo 'Volvo:{"brand": "Volvo", "model": "V70", "price": 3000}' | \
 
 ```bash
 docker compose exec kafka /opt/kafka/bin/kafka-consumer-groups.sh \
-  --bootstrap-server localhost:9092 --group car-db-writer --topic topic.igor \
+  --bootstrap-server localhost:9092 --group car-db-writer --topic cars \
   --reset-offsets --to-earliest --execute
 ```
 
@@ -142,28 +144,28 @@ To read the topic without joining any group the app uses:
 
 ```bash
 docker compose exec kafka /opt/kafka/bin/kafka-console-consumer.sh \
-  --bootstrap-server localhost:9092 --topic topic.igor --from-beginning \
+  --bootstrap-server localhost:9092 --topic cars --from-beginning \
   --formatter-property print.key=true --formatter-property print.partition=true \
   --formatter-property print.offset=true
 ```
 
 ### 4. Bad messages go to the dead-letter topic
 
-A car with a price of 0 or less is rejected by the consumer. Retrying won't fix it, so it goes straight to `topic.igor-dlt`:
+A car with a price of 0 or less is rejected by the consumer. Retrying won't fix it, so it goes straight to `cars-dlt`:
 
 ```bash
-curl -X POST localhost:9001/kafka-igor/producer -H 'Content-Type: application/json' \
+curl -X POST localhost:9001/api/cars -H 'Content-Type: application/json' \
   -d '{"brand": "Volvo", "model": "Broken", "price": -1}'
 ```
 
 ```
 Attempt 1 failed for key=Volvo partition=0 offset=2: InvalidCarException: Price must be positive: ...
-Gave up on key=Volvo partition=0 offset=2, published it to topic.igor-dlt
+Gave up on key=Volvo partition=0 offset=2, published it to cars-dlt
 ```
 
 The same happens to a message that isn't valid JSON. Produce `Volvo:not json` with the console producer from scenario 3, or with Kafka UI. Without the dead-letter topic, a message like that would block its partition: the consumer would fail on it on every poll and never get past it.
 
-In Kafka UI, open **Topics → topic.igor-dlt → Messages**. Each dead-lettered message keeps its original key, value and partition, plus `kafka_dlt-*` headers that record the exception and where the message came from (original topic, partition, offset, consumer group).
+In Kafka UI, open **Topics → cars-dlt → Messages**. Each dead-lettered message keeps its original key, value and partition, plus `kafka_dlt-*` headers that record the exception and where the message came from (original topic, partition, offset, consumer group).
 
 ### 5. Temporary failures are retried
 
@@ -171,7 +173,7 @@ Stop the database and send a valid car:
 
 ```bash
 docker compose stop postgres
-curl -X POST localhost:9001/kafka-igor/producer -H 'Content-Type: application/json' \
+curl -X POST localhost:9001/api/cars -H 'Content-Type: application/json' \
   -d '{"brand": "Honda", "model": "Civic", "price": 25000}'
 ```
 
@@ -181,7 +183,7 @@ The consumer tries 3 times, about 4 seconds apart (3 s database connection timeo
 Attempt 1 failed for key=Honda partition=1 offset=...: ConnectException: Connection refused
 Attempt 2 failed for key=Honda partition=1 offset=...: ConnectException: Connection refused
 Attempt 3 failed for key=Honda partition=1 offset=...: ConnectException: Connection refused
-Gave up on key=Honda partition=1 offset=..., published it to topic.igor-dlt
+Gave up on key=Honda partition=1 offset=..., published it to cars-dlt
 ```
 
 Start the database again with `docker compose start postgres`. The Civic is in the dead-letter topic, not in the database: dead-lettered messages need to be reprocessed explicitly, for example with a replay as in scenario 3.

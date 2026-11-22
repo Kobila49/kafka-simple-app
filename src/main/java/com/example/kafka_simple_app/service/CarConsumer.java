@@ -10,13 +10,13 @@ import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Service;
 
 @Service
-public class KafkaConsumer {
+public class CarConsumer {
 
-    private static final Logger log = LoggerFactory.getLogger(KafkaConsumer.class);
+    private static final Logger log = LoggerFactory.getLogger(CarConsumer.class);
 
     private final CarRepository repository;
 
-    public KafkaConsumer(CarRepository repository) {
+    public CarConsumer(CarRepository repository) {
         this.repository = repository;
     }
 

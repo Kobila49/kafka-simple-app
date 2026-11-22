@@ -5,6 +5,7 @@ import com.example.kafka_simple_app.service.InvalidCarException;
 import org.apache.kafka.clients.consumer.Consumer;
 import org.apache.kafka.clients.consumer.ConsumerConfig;
 import org.apache.kafka.clients.consumer.ConsumerRecord;
+import org.apache.kafka.clients.consumer.KafkaConsumer;
 import org.apache.kafka.clients.producer.KafkaProducer;
 import org.apache.kafka.clients.producer.Producer;
 import org.apache.kafka.clients.producer.ProducerConfig;
@@ -59,12 +60,12 @@ class DeadLetterTopicTests {
 
     @Test
     void invalidCarIsSentToTheDeadLetterTopic() throws Exception {
-        mockMvc.perform(post("/kafka-igor/producer")
+        mockMvc.perform(post("/api/cars")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"brand": "Trabant", "model": "601", "price": -1}
                                 """))
-                .andExpect(status().isOk());
+                .andExpect(status().isAccepted());
 
         ConsumerRecord<String, String> deadLetter = awaitDeadLetter("Trabant");
 
@@ -86,12 +87,12 @@ class DeadLetterTopicTests {
         assertThat(deadLetter.value()).isEqualTo("this is not json");
 
         // The bad message didn't block the consumer: a valid car sent afterwards is still stored.
-        mockMvc.perform(post("/kafka-igor/producer")
+        mockMvc.perform(post("/api/cars")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
                                 {"brand": "Lada", "model": "Niva", "price": 9000}
                                 """))
-                .andExpect(status().isOk());
+                .andExpect(status().isAccepted());
 
         await().atMost(Duration.ofSeconds(30)).until(() ->
                 StreamSupport.stream(carRepository.findAll().spliterator(), false)
@@ -104,7 +105,7 @@ class DeadLetterTopicTests {
                 ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers(),
                 ConsumerConfig.GROUP_ID_CONFIG, "test-dlt-reader-" + UUID.randomUUID(),
                 ConsumerConfig.AUTO_OFFSET_RESET_CONFIG, "earliest");
-        try (Consumer<String, String> consumer = new org.apache.kafka.clients.consumer.KafkaConsumer<>(
+        try (Consumer<String, String> consumer = new KafkaConsumer<>(
                 props, new StringDeserializer(), new StringDeserializer())) {
             consumer.subscribe(List.of(topicName + "-dlt"));
             List<ConsumerRecord<String, String>> received = new ArrayList<>();
