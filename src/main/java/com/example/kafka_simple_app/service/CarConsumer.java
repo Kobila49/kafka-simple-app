@@ -28,13 +28,13 @@ public class CarConsumer {
      * {@code KafkaErrorHandlingConfig}: retried, then published to the dead-letter topic.
      */
     @KafkaListener(topics = "${topic.name}")
-    public void consume(ConsumerRecord<String, CarDTO> record) {
-        log.info("Consumed key={} partition={} offset={}: {}",
-                record.key(), record.partition(), record.offset(), record.value());
+    public void consume(ConsumerRecord<String, CarDTO> consumerRecord) {
+        log.info("Consumed key={} partition={} offset={}: {}", consumerRecord.key(),
+                consumerRecord.partition(), consumerRecord.offset(), consumerRecord.value());
 
         // The REST API deliberately accepts any car, so you can send invalid ones and watch
         // what the consumer side does with them.
-        CarDTO car = record.value();
+        CarDTO car = consumerRecord.value();
         if (car.price() == null || car.price().signum() <= 0) {
             throw new InvalidCarException("Price must be positive: " + car);
         }

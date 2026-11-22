@@ -150,14 +150,14 @@ class DeadLetterTopicTests {
             List<ConsumerRecord<String, String>> received = new ArrayList<>();
             await().atMost(Duration.ofSeconds(30)).until(() -> {
                 consumer.poll(Duration.ofMillis(500)).forEach(received::add);
-                return received.stream().anyMatch(record -> key.equals(record.key()));
+                return received.stream().anyMatch(deadLetter -> key.equals(deadLetter.key()));
             });
-            return received.stream().filter(record -> key.equals(record.key())).findFirst().orElseThrow();
+            return received.stream().filter(deadLetter -> key.equals(deadLetter.key())).findFirst().orElseThrow();
         }
     }
 
-    private static String header(ConsumerRecord<?, ?> record, String name) {
-        Header header = record.headers().lastHeader(name);
+    private static String header(ConsumerRecord<?, ?> consumerRecord, String name) {
+        Header header = consumerRecord.headers().lastHeader(name);
         return header == null ? null : new String(header.value(), StandardCharsets.UTF_8);
     }
 }

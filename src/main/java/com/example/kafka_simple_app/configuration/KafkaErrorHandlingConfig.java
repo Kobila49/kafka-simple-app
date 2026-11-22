@@ -63,15 +63,17 @@ public class KafkaErrorHandlingConfig {
         private static final Logger log = LoggerFactory.getLogger(LoggingRetryListener.class);
 
         @Override
-        public void failedDelivery(ConsumerRecord<?, ?> record, Exception ex, int deliveryAttempt) {
-            log.warn("Attempt {} failed for key={} partition={} offset={}: {}", deliveryAttempt,
-                    record.key(), record.partition(), record.offset(), rootCause(ex));
+        public void failedDelivery(ConsumerRecord<?, ?> consumerRecord, Exception ex, int deliveryAttempt) {
+            if (log.isWarnEnabled()) {
+                log.warn("Attempt {} failed for key={} partition={} offset={}: {}", deliveryAttempt,
+                        consumerRecord.key(), consumerRecord.partition(), consumerRecord.offset(), rootCause(ex));
+            }
         }
 
         @Override
-        public void recovered(ConsumerRecord<?, ?> record, Exception ex) {
-            log.warn("Gave up on key={} partition={} offset={}, published it to {}-dlt",
-                    record.key(), record.partition(), record.offset(), record.topic());
+        public void recovered(ConsumerRecord<?, ?> consumerRecord, Exception ex) {
+            log.warn("Gave up on key={} partition={} offset={}, published it to {}-dlt", consumerRecord.key(),
+                    consumerRecord.partition(), consumerRecord.offset(), consumerRecord.topic());
         }
 
         private static String rootCause(Exception ex) {
