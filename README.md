@@ -41,10 +41,15 @@ curl -X POST localhost:9001/api/cars \
 The API answers `202 Accepted` with where Kafka stored the message:
 
 ```json
-{ "topic": "cars", "key": "Volvo", "partition": 0, "offset": 0 }
+{
+  "topic" : "cars",
+  "key" : "Volvo",
+  "partition" : 0,
+  "offset" : 0
+}
 ```
 
-"Accepted" because at this point the car is only in Kafka. The consumer stores it in the database asynchronously, a moment later. The app log shows both sides:
+The producer's `send()` is asynchronous, but the app waits for the broker's acknowledgement before it answers, which is how it knows the partition and offset. "Accepted" because at this point the car is only in Kafka. The consumer stores it in the database asynchronously, a moment later. The app log shows both sides:
 
 ```
 Sent key=Volvo to partition=0 offset=0: CarDTO[brand=Volvo, model=XC60, price=45000]
@@ -55,7 +60,7 @@ List stored cars with `curl localhost:9001/api/cars`. To start over with empty K
 
 ## Running everything in Docker
 
-No JDK needed: the `Dockerfile` builds the app inside a container. The image is about 180 MB: Alpine Linux, plus a Java runtime that `jlink` assembles from only the JDK modules the app uses (the comments in the `Dockerfile` explain each step). The app's service in `compose.yaml` belongs to the Compose profile `app`, so it only starts when you ask for it. That's why `./gradlew bootRun` and a plain `docker compose up` start just the infrastructure.
+No JDK needed: the `Dockerfile` builds the app inside a container. The image is about 180 MB: Alpine Linux, the app, and a Java runtime that `jlink` assembles from only the JDK modules the app uses. The JDK and Gradle are only needed for the build, so they aren't in the image. The app's service in `compose.yaml` belongs to the Compose profile `app`, so it only starts when you ask for it. That's why `./gradlew bootRun` and a plain `docker compose up` start just the infrastructure.
 
 ```bash
 docker compose --profile app up -d --build   # build the image and start everything
@@ -78,11 +83,15 @@ Inside Docker, the app reaches Kafka at `kafka:19092` and PostgreSQL at `postgre
 | Retries and dead-lettering | `configuration/KafkaErrorHandlingConfig.java` |
 | The broker itself (KRaft mode, listeners) | `compose.yaml` |
 
+The broker's automatic topic creation is turned off. The app declares `cars` and `cars-dlt` and creates them at startup if they don't exist yet, so a typo in a topic name fails instead of quietly creating a new topic.
+
+Kafka stores keys and values as plain bytes and doesn't care about their format. Here the key is a string and the value is plain JSON. The producer doesn't add Spring's `__TypeId__` header with a Java class name, and the consumer reads every value as a car. So messages from other tools, like Kafka's console producer or Kafka UI, are read the same way.
+
 ## Demo scenarios
 
 ### 1. Keys decide the partition
 
-The car's brand is the message key. Kafka hashes the key to pick a partition, so all cars of one brand go to the same partition, where they keep their order. With 3 partitions, Volvo goes to partition 0, Honda to 1 and Fiat to 2:
+The car's brand is the message key. The producer hashes the key and takes the result modulo the number of partitions, so all cars of one brand go to the same partition, where they keep their order. With 3 partitions, Volvo goes to partition 0, Honda to 1 and Fiat to 2:
 
 ```bash
 for brand in Volvo Honda Fiat Volvo; do
@@ -125,7 +134,7 @@ docker logs app-2 | grep 'partitions assigned'
 
 After the rebalances settle, each of the three containers has one partition. `run` doesn't publish the service's port, so the extra instances don't clash with the first one: keep sending cars to port 9001, and each one is consumed by whichever instance owns its partition. Stop an instance with `docker stop app-2` to see the rebalance, and remove both with `docker rm -f app-2 app-3` when you're done.
 
-A third instance would get one partition each. A fourth would get none and sit idle: **a group can't use more consumers than the topic has partitions**. Instead of more instances, you can also run more consumer threads in one instance with `--spring.kafka.listener.concurrency=3`.
+A fourth instance would get no partition and sit idle: **a group can't use more consumers than the topic has partitions**. Instead of more instances, you can also run more consumer threads in one instance with `--spring.kafka.listener.concurrency=3`. Each thread is a separate member of the group.
 
 See the assignment and progress of the group from the command line (or under **Consumers** in Kafka UI):
 
@@ -161,7 +170,7 @@ docker compose exec kafka /opt/kafka/bin/kafka-consumer-groups.sh \
 
 Start the app and it consumes every message again, so every car is stored a second time. Kafka guarantees each message is delivered *at least once*, so real consumers need to be idempotent, for example by ignoring messages they've already processed.
 
-**New groups.** A group with no stored offsets starts according to `spring.kafka.consumer.auto-offset-reset`, which is `earliest` here (the whole topic). Try `./gradlew bootRun --args='--spring.kafka.consumer.group-id=another-group'`: it reads everything from the start, independently of `car-db-writer`.
+**New groups.** A group with no stored offsets starts according to `spring.kafka.consumer.auto-offset-reset`, which is `earliest` here (the whole topic). Kafka's default, `latest`, would only read messages sent after the group started. Once a group has stored offsets, it always continues from them. Try `./gradlew bootRun --args='--spring.kafka.consumer.group-id=another-group'`: it reads everything from the start, independently of `car-db-writer`.
 
 To read the topic without joining any group the app uses:
 
@@ -182,8 +191,8 @@ curl -X POST localhost:9001/api/cars -H 'Content-Type: application/json' \
 ```
 
 ```
-Attempt 1 failed for key=Volvo partition=0 offset=2: InvalidCarException: Price must be positive: ...
-Gave up on key=Volvo partition=0 offset=2, published it to cars-dlt
+Attempt 1 failed for key=Volvo partition=0 offset=...: InvalidCarException: Price must be positive: ...
+Gave up on key=Volvo partition=0 offset=..., published it to cars-dlt
 ```
 
 The same happens to a message that isn't valid JSON. Produce `Volvo:not json` with the console producer from scenario 3, or with Kafka UI. Without the dead-letter topic, a message like that would block its partition: the consumer would fail on it on every poll and never get past it.
@@ -219,4 +228,4 @@ Start the database again with `docker compose start postgres`. The Civic is in t
 ./gradlew test
 ```
 
-The tests are end-to-end: they start their own throwaway Kafka and PostgreSQL containers with Testcontainers, send cars through the REST API, and check the database and the dead-letter topic. Docker must be running.
+The tests are end-to-end: they start their own throwaway Kafka and PostgreSQL containers with Testcontainers, send cars through the REST API, and check the database and the dead-letter topic. One test makes the database fail on purpose, to check that a car is tried exactly 3 times even when the exception changes between attempts. Docker must be running.
