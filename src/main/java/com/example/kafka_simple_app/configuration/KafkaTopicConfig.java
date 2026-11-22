@@ -21,4 +21,17 @@ public class KafkaTopicConfig {
                 .replicas(1) // single broker in compose.yaml, so only one copy is possible
                 .build();
     }
+
+    /**
+     * Dead-letter topic for messages the consumer gave up on (see {@code KafkaErrorHandlingConfig}).
+     * A failed record goes to the same partition number it came from, so this topic needs at
+     * least as many partitions as the main one.
+     */
+    @Bean
+    NewTopic carsDeadLetterTopic(@Value("${topic.name}") String name, @Value("${topic.partitions}") int partitions) {
+        return TopicBuilder.name(name + "-dlt")
+                .partitions(partitions)
+                .replicas(1)
+                .build();
+    }
 }

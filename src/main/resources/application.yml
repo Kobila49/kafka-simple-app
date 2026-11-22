@@ -18,6 +18,10 @@ spring:
     url: jdbc:postgresql://localhost:5432/cars
     username: cars
     password: cars
+    hikari:
+      # Give up on a database connection after 3s instead of 30s, so a retry demo with
+      # PostgreSQL stopped doesn't take minutes.
+      connection-timeout: 3000
   jpa:
     hibernate:
       ddl-auto: update
@@ -46,7 +50,10 @@ spring:
       # Once the group has committed offsets, it always resumes from them instead.
       auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
-      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+      # Wraps the JSON deserializer: a message that isn't valid JSON becomes an error for the
+      # error handler (-> dead-letter topic) instead of failing on every poll forever.
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
       properties:
+        "[spring.deserializer.value.delegate.class]": org.springframework.kafka.support.serializer.JacksonJsonDeserializer
         # ...which means the consumer decides what type the JSON is read into.
         "[spring.json.value.default.type]": com.example.kafka_simple_app.dto.CarDTO
