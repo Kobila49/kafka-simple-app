@@ -24,10 +24,7 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
-/**
- * End-to-end tests: HTTP -> Kafka -> consumer -> PostgreSQL. All tests share the same containers,
- * so each one uses its own car models and only asserts on those.
- */
+/** The tests share their containers, so each one uses its own car models and only checks those. */
 @SpringBootTest
 @AutoConfigureMockMvc
 @Import(TestcontainersConfiguration.class)

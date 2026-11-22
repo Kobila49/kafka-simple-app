@@ -9,11 +9,7 @@ import org.springframework.kafka.config.TopicBuilder;
 @Configuration(proxyBeanMethods = false)
 public class KafkaTopicConfig {
 
-    /**
-     * Spring's {@code KafkaAdmin} creates this topic at startup if it doesn't exist yet (and adds
-     * partitions if it has fewer). A topic is split into partitions: each one is an ordered log,
-     * and the partitions are what get spread across the consumers of a group.
-     */
+    /** Spring's {@code KafkaAdmin} creates missing topics at startup (and adds missing partitions). */
     @Bean
     NewTopic carsTopic(@Value("${topic.name}") String name, @Value("${topic.partitions}") int partitions) {
         return TopicBuilder.name(name)
@@ -22,11 +18,7 @@ public class KafkaTopicConfig {
                 .build();
     }
 
-    /**
-     * Dead-letter topic for messages the consumer gave up on (see {@code KafkaErrorHandlingConfig}).
-     * A failed record goes to the same partition number it came from, so this topic needs at
-     * least as many partitions as the main one.
-     */
+    /** A dead-lettered record keeps its partition number, so this topic needs as many partitions. */
     @Bean
     NewTopic carsDeadLetterTopic(@Value("${topic.name}") String name, @Value("${topic.partitions}") int partitions) {
         return TopicBuilder.name(name + "-dlt")

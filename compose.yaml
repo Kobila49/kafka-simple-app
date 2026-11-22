@@ -1,23 +1,15 @@
-# Local infrastructure for the app. `./gradlew bootRun` starts it automatically
-# (Spring Boot Docker Compose support), or run `docker compose up -d` yourself.
-#
-# To run the app in Docker too, enable the "app" profile:
-#   docker compose --profile app up -d --build
+# `./gradlew bootRun` starts these services itself (Spring Boot Docker Compose support).
 services:
 
-  # The app itself, built from the Dockerfile. It's in the "app" profile, so plain
-  # `docker compose up` and `./gradlew bootRun` (which runs the app on your machine) skip it.
+  # Only started with `--profile app`, so bootRun and plain `docker compose up` skip it.
   app:
     profiles: [app]
     build: .
     image: kafka-simple-app
     ports:
-      # For more instances (consumer group demo), use `docker compose run -d --name app-2 app`.
-      # `run` doesn't publish this port, so the extra instances don't clash with this one.
+      # Extra instances via `docker compose run -d --name app-2 app` don't publish this port.
       - "9001:9001"
     environment:
-      # Inside the compose network, the other services are reached by name. Kafka advertises
-      # kafka:19092 (its PLAINTEXT listener) for clients in other containers.
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
       SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cars
     depends_on:
@@ -37,8 +29,8 @@ services:
       KAFKA_PROCESS_ROLES: broker,controller
       KAFKA_CONTROLLER_QUORUM_VOTERS: 1@kafka:9093
       KAFKA_CONTROLLER_LISTENER_NAMES: CONTROLLER
-      # Two client listeners: PLAINTEXT for containers on the compose network (Kafka UI),
-      # PLAINTEXT_HOST for the Spring app running on your machine.
+      # Clients in other containers use PLAINTEXT (kafka:19092), clients on your machine
+      # PLAINTEXT_HOST (localhost:9092).
       KAFKA_LISTENERS: PLAINTEXT://:19092,CONTROLLER://:9093,PLAINTEXT_HOST://:9092
       KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:19092,PLAINTEXT_HOST://localhost:9092
       KAFKA_LISTENER_SECURITY_PROTOCOL_MAP: CONTROLLER:PLAINTEXT,PLAINTEXT:PLAINTEXT,PLAINTEXT_HOST:PLAINTEXT
@@ -50,8 +42,7 @@ services:
       KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      # Topics have to be declared (the app does it with a NewTopic bean), so a typo in a
-      # topic name fails loudly instead of silently creating a new topic.
+      # Topics must be declared (NewTopic beans), so a typo in a topic name fails loudly.
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     healthcheck:
       test: /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1
@@ -71,7 +62,7 @@ services:
       kafka:
         condition: service_healthy
     labels:
-      # Not a dependency of the app, so Spring Boot shouldn't wait for it or try to connect to it.
+      # Not a dependency of the app: Spring Boot shouldn't wait for it or connect to it.
       org.springframework.boot.ignore: true
 
   postgres:

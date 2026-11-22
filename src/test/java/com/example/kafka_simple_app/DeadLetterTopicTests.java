@@ -47,11 +47,8 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 /**
- * Messages the consumer can't process end up on the dead-letter topic instead of blocking the
- * partition.
- *
- * <p>The repository is a spy, so a test can make the database fail. Bean overrides are part of
- * the context cache key, so this class gets its own application context (and containers).
+ * The repository is a spy, so a test can make the database fail. Bean overrides are part of the
+ * context cache key, so this class gets its own application context (and containers).
  */
 @SpringBootTest
 @AutoConfigureMockMvc
@@ -98,7 +95,6 @@ class DeadLetterTopicTests {
         ConsumerRecord<String, String> deadLetter = awaitDeadLetter("poison");
         assertThat(deadLetter.value()).isEqualTo("this is not json");
 
-        // The bad message didn't block the consumer: a valid car sent afterwards is still stored.
         mockMvc.perform(post("/api/cars")
                         .contentType(MediaType.APPLICATION_JSON)
                         .content("""
@@ -113,8 +109,7 @@ class DeadLetterTopicTests {
 
     @Test
     void failingCarIsTriedThreeTimesEvenWhenTheErrorChanges() throws Exception {
-        // Like a database that goes down while the app holds an open connection: the first attempt
-        // fails while rolling back on that connection, the next ones can't connect at all.
+        // Like a database going down: first a failed rollback, then failed connects.
         doThrow(new TransactionSystemException("Could not roll back: connection is closed"))
                 .doThrow(new CannotCreateTransactionException("Could not open a connection"))
                 .when(carRepository).save(argThat(hasModel("353")));
@@ -128,7 +123,6 @@ class DeadLetterTopicTests {
 
         ConsumerRecord<String, String> deadLetter = awaitDeadLetter("Wartburg");
 
-        // 1 attempt + 2 retries, although the exception type changed after the first attempt.
         verify(carRepository, times(3)).save(argThat(hasModel("353")));
         assertThat(header(deadLetter, KafkaHeaders.DLT_EXCEPTION_CAUSE_FQCN))
                 .isEqualTo(CannotCreateTransactionException.class.getName());
@@ -138,7 +132,6 @@ class DeadLetterTopicTests {
         return car -> car != null && model.equals(car.getModel());
     }
 
-    /** Reads the dead-letter topic from the beginning until a record with the given key shows up. */
     private ConsumerRecord<String, String> awaitDeadLetter(String key) {
         Map<String, Object> props = Map.of(
                 ConsumerConfig.BOOTSTRAP_SERVERS_CONFIG, kafka.getBootstrapServers(),
@@ -150,14 +143,14 @@ class DeadLetterTopicTests {
             List<ConsumerRecord<String, String>> received = new ArrayList<>();
             await().atMost(Duration.ofSeconds(30)).until(() -> {
                 consumer.poll(Duration.ofMillis(500)).forEach(received::add);
-                return received.stream().anyMatch(record -> key.equals(record.key()));
+                return received.stream().anyMatch(deadLetter -> key.equals(deadLetter.key()));
             });
-            return received.stream().filter(record -> key.equals(record.key())).findFirst().orElseThrow();
+            return received.stream().filter(deadLetter -> key.equals(deadLetter.key())).findFirst().orElseThrow();
         }
     }
 
-    private static String header(ConsumerRecord<?, ?> record, String name) {
-        Header header = record.headers().lastHeader(name);
+    private static String header(ConsumerRecord<?, ?> consumerRecord, String name) {
+        Header header = consumerRecord.headers().lastHeader(name);
         return header == null ? null : new String(header.value(), StandardCharsets.UTF_8);
     }
 }

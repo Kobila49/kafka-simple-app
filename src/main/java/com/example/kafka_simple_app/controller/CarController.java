@@ -23,10 +23,7 @@ public class CarController {
         this.databaseService = databaseService;
     }
 
-    /**
-     * 202 Accepted rather than 201 Created: at this point the car is only in Kafka. The consumer
-     * stores it in the database asynchronously, a moment later (or never, if it is invalid).
-     */
+    /** 202, not 201: the car is only in Kafka yet. The consumer stores it later, if it's valid. */
     @PostMapping
     @ResponseStatus(HttpStatus.ACCEPTED)
     public SentMessageDTO sendCar(@RequestBody CarDTO carDTO) {

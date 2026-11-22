@@ -7,10 +7,7 @@ import org.testcontainers.kafka.KafkaContainer;
 import org.testcontainers.postgresql.PostgreSQLContainer;
 import org.testcontainers.utility.DockerImageName;
 
-/**
- * Throwaway Kafka and PostgreSQL containers for tests, using the same images as compose.yaml.
- * {@code @ServiceConnection} points Spring Boot's Kafka and DataSource configuration at them.
- */
+/** Keep the images in sync with compose.yaml. */
 @TestConfiguration(proxyBeanMethods = false)
 class TestcontainersConfiguration {
 
