@@ -1,0 +1,42 @@
+server:
+  port: 9001
+
+topic:
+  name: topic.igor
+
+spring:
+  application:
+    name: kafka-simple-app
+  jackson:
+    serialization:
+      indent-output: true
+
+  # PostgreSQL from compose.yaml. When started with bootRun, Spring Boot's Docker Compose
+  # support supplies the connection details from the running container instead.
+  datasource:
+    url: jdbc:postgresql://localhost:5432/cars
+    username: cars
+    password: cars
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+  # Kafka from compose.yaml. Everything Kafka-related is configured here; Spring Boot builds
+  # the KafkaTemplate, consumer factory and listener container factory from these settings.
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+      properties:
+        # Kafka only stores bytes. Send plain JSON without Spring's __TypeId__ header,
+        # so the message format doesn't depend on Java class names.
+        "[spring.json.add.type.headers]": false
+    consumer:
+      group-id: car-db-writer
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+      properties:
+        # ...which means the consumer decides what type the JSON is read into.
+        "[spring.json.value.default.type]": com.example.kafka_simple_app.dto.CarDTO

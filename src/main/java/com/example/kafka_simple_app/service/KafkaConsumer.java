@@ -19,7 +19,7 @@ public class KafkaConsumer {
         this.repository = repository;
     }
 
-    @KafkaListener(topics = "${topic.name}", groupId = "${spring.kafka.group-id}")
+    @KafkaListener(topics = "${topic.name}")
     public void consume(CarDTO carDTO) {
         log.info("Received Car information: {}", carDTO);
         this.repository.save(carEntity(carDTO));
