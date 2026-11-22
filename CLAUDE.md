@@ -14,8 +14,12 @@ Spring Boot 4.2 / Java 25 / Gradle 9.9 (wrapper). The build uses a Java 25 toolc
 ./gradlew bootRun                    # starts compose.yaml, then the app on port 9001
 ./gradlew bootRun --args='--server.port=9002'   # second instance, e.g. for consumer group demos
 docker compose up -d                 # start infrastructure only (bootRun then leaves it alone)
-docker compose down -v               # stop and wipe everything, including Kafka and Postgres data
+docker compose --profile app up -d --build   # infrastructure + the app as a container (no JDK needed)
+docker compose --profile app up -d --scale app=3   # 3 app containers on host ports 9001-9003
+docker compose --profile app down -v # stop and wipe everything, including Kafka and Postgres data
 ```
+
+Always pass `--profile app` to `down`. Without it, Compose leaves the app containers running and can't remove the network.
 
 There is no linter or formatter task in the build. The IntelliJ project has the google-java-format plugin enabled.
 
@@ -24,6 +28,9 @@ There is no linter or formatter task in the build. The IntelliJ project has the 
 - **kafka** (`apache/kafka`, single node in KRaft mode): `localhost:9092` from the host, `kafka:19092` from other containers. **Topic auto-creation is disabled**: every topic must be declared as a `NewTopic` bean. Kafka CLI tools are at `/opt/kafka/bin/` in the container (`docker compose exec kafka ...`).
 - **kafka-ui** (`kafbat/kafka-ui`): http://localhost:8080. It is labeled `org.springframework.boot.ignore` so the app neither waits for it nor tries to connect to it.
 - **postgres** (18): database/user/password all `cars`, with data in the `postgres-data` volume. The schema comes from `ddl-auto=update`; there are no migrations.
+- **app** (profile `app`, built from `Dockerfile`): only starts with `--profile app`, so `bootRun` (whose Compose support activates no profiles) never starts a second copy of the app on port 9001. The service points the app at `kafka:19092` and `postgres:5432` with `SPRING_KAFKA_BOOTSTRAP_SERVERS` / `SPRING_DATASOURCE_URL`. The host port is the range `9001-9003` so the service can be scaled.
+
+The `Dockerfile` is multi-stage. It runs `./gradlew bootJar` in `eclipse-temurin:25-jdk` with a BuildKit cache mount for `~/.gradle`, skipping tests because they need Docker themselves. It then extracts the jar into layers (`-Djarmode=tools extract --layers`) and runs `java -jar application.jar` on `eclipse-temurin:25-jre` as the non-root user `spring`. `devtools` and `spring-boot-docker-compose` are `developmentOnly`, so they aren't in the image. `.dockerignore` limits the build context to the wrapper, build files and `src/`.
 
 `spring-boot-docker-compose` is a `developmentOnly` dependency. On `bootRun` it runs `docker compose up`, waits for the healthchecks, supplies the Postgres connection details, and runs `docker compose stop` on shutdown, but only if it started the containers itself. It has **no Kafka service connection**, so the Kafka address always comes from `spring.kafka.bootstrap-servers`.
 

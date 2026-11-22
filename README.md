@@ -12,8 +12,8 @@ GET /api/cars ◄── DatabaseService ◄── PostgreSQL                  to
 
 ## Requirements
 
-- **JDK 25** for compiling. Gradle runs on any JDK 17+ and finds JDK 25 itself; if it can't, point `JAVA_HOME` at a JDK 25.
-- **Docker** with Docker Compose, for Kafka, Kafka UI and PostgreSQL (and for the tests).
+- **Docker** with Docker Compose. This is all you need to [run everything in Docker](#running-everything-in-docker).
+- **JDK 25** to run the app on your machine with Gradle, and for the tests. Gradle runs on any JDK 17+ and finds JDK 25 itself; if it can't, point `JAVA_HOME` at a JDK 25.
 
 ## Quick start
 
@@ -44,16 +44,28 @@ The API answers `202 Accepted` with where Kafka stored the message:
 { "topic": "cars", "key": "Volvo", "partition": 0, "offset": 0 }
 ```
 
-"Accepted" because at this point the car is only in Kafka. The consumer stores it in the database asynchronously, a moment later.
-
-and the app log shows both sides:
+"Accepted" because at this point the car is only in Kafka. The consumer stores it in the database asynchronously, a moment later. The app log shows both sides:
 
 ```
 Sent key=Volvo to partition=0 offset=0: CarDTO[brand=Volvo, model=XC60, price=45000]
 Consumed key=Volvo partition=0 offset=0: CarDTO[brand=Volvo, model=XC60, price=45000]
 ```
 
-List stored cars with `curl localhost:9001/api/cars`. To start over with empty Kafka and PostgreSQL: `docker compose down -v`.
+List stored cars with `curl localhost:9001/api/cars`. To start over with empty Kafka and PostgreSQL: `docker compose --profile app down -v`.
+
+## Running everything in Docker
+
+No JDK needed: the `Dockerfile` builds the app inside a container and runs it on a JRE image. The app's service in `compose.yaml` belongs to the Compose profile `app`, so it only starts when you ask for it. That's why `./gradlew bootRun` and a plain `docker compose up` start just the infrastructure.
+
+```bash
+docker compose --profile app up -d --build   # build the image and start everything
+docker compose logs -f app                   # follow the app log
+docker compose --profile app down            # stop everything
+```
+
+The URLs are the same as above. Run the first command again after changing code, and `--build` rebuilds the image. Always pass `--profile app` to `down`: without it, the app containers keep running.
+
+Inside Docker, the app reaches Kafka at `kafka:19092` and PostgreSQL at `postgres:5432` instead of `localhost`; `compose.yaml` sets this through environment variables. That's why Kafka has two listeners: `localhost:9092` for clients on your machine, `kafka:19092` for clients in other containers.
 
 ## Where each Kafka concept lives
 
@@ -102,6 +114,15 @@ car-db-writer: partitions assigned: [cars-0, cars-1]
 
 and the second gets `[cars-2]`. Send the Volvo, Honda and Fiat cars from scenario 1 again: the Fiat is consumed by the instance that owns partition 2. Then stop one instance and watch the other take all partitions back.
 
+In Docker, you can start several instances at once instead (on ports 9001, 9002 and 9003):
+
+```bash
+docker compose --profile app up -d --scale app=3
+docker compose logs app | grep 'partitions assigned'
+```
+
+After the rebalances settle, each of the three containers has one partition.
+
 A third instance would get one partition each. A fourth would get none and sit idle: **a group can't use more consumers than the topic has partitions**. Instead of more instances, you can also run more consumer threads in one instance with `--spring.kafka.listener.concurrency=3`.
 
 See the assignment and progress of the group from the command line (or under **Consumers** in Kafka UI):
@@ -117,7 +138,7 @@ docker compose exec kafka /opt/kafka/bin/kafka-consumer-groups.sh \
 
 Kafka doesn't delete a message when it's consumed. Each consumer group only stores its position (offset) per partition, and that's what makes lag and replay possible.
 
-**Lag.** Stop all app instances but keep the containers running. Produce a message directly with Kafka's console producer (or with **Produce Message** in Kafka UI):
+**Lag.** Stop all app instances but keep the other containers running (`docker compose stop app` if the app runs in Docker). Produce a message directly with Kafka's console producer (or with **Produce Message** in Kafka UI):
 
 ```bash
 echo 'Volvo:{"brand": "Volvo", "model": "V70", "price": 3000}' | \

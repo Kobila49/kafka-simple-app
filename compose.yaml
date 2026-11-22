@@ -1,6 +1,29 @@
 # Local infrastructure for the app. `./gradlew bootRun` starts it automatically
 # (Spring Boot Docker Compose support), or run `docker compose up -d` yourself.
+#
+# To run the app in Docker too, enable the "app" profile:
+#   docker compose --profile app up -d --build
 services:
+
+  # The app itself, built from the Dockerfile. It's in the "app" profile, so plain
+  # `docker compose up` and `./gradlew bootRun` (which runs the app on your machine) skip it.
+  app:
+    profiles: [app]
+    build: .
+    image: kafka-simple-app
+    ports:
+      # A range, so `--scale app=3` can give each instance its own host port (9001, 9002, 9003).
+      - "9001-9003:9001"
+    environment:
+      # Inside the compose network, the other services are reached by name. Kafka advertises
+      # kafka:19092 (its PLAINTEXT listener) for clients in other containers.
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:19092
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/cars
+    depends_on:
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
 
   # Single-node Kafka in KRaft mode (no ZooKeeper): one process is both broker and controller.
   kafka:
