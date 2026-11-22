@@ -55,7 +55,7 @@ List stored cars with `curl localhost:9001/api/cars`. To start over with empty K
 
 ## Running everything in Docker
 
-No JDK needed: the `Dockerfile` builds the app inside a container and runs it on a JRE image. The app's service in `compose.yaml` belongs to the Compose profile `app`, so it only starts when you ask for it. That's why `./gradlew bootRun` and a plain `docker compose up` start just the infrastructure.
+No JDK needed: the `Dockerfile` builds the app inside a container. The image is about 180 MB: Alpine Linux, plus a Java runtime that `jlink` assembles from only the JDK modules the app uses (the comments in the `Dockerfile` explain each step). The app's service in `compose.yaml` belongs to the Compose profile `app`, so it only starts when you ask for it. That's why `./gradlew bootRun` and a plain `docker compose up` start just the infrastructure.
 
 ```bash
 docker compose --profile app up -d --build   # build the image and start everything
@@ -114,14 +114,16 @@ car-db-writer: partitions assigned: [cars-0, cars-1]
 
 and the second gets `[cars-2]`. Send the Volvo, Honda and Fiat cars from scenario 1 again: the Fiat is consumed by the instance that owns partition 2. Then stop one instance and watch the other take all partitions back.
 
-In Docker, you can start several instances at once instead (on ports 9001, 9002 and 9003):
+In Docker, start the extra instances with `docker compose run`:
 
 ```bash
-docker compose --profile app up -d --scale app=3
-docker compose logs app | grep 'partitions assigned'
+docker compose --profile app up -d          # first instance, on port 9001
+docker compose run -d --name app-2 app      # two more in the same consumer group
+docker compose run -d --name app-3 app
+docker logs app-2 | grep 'partitions assigned'
 ```
 
-After the rebalances settle, each of the three containers has one partition.
+After the rebalances settle, each of the three containers has one partition. `run` doesn't publish the service's port, so the extra instances don't clash with the first one: keep sending cars to port 9001, and each one is consumed by whichever instance owns its partition. Stop an instance with `docker stop app-2` to see the rebalance, and remove both with `docker rm -f app-2 app-3` when you're done.
 
 A third instance would get one partition each. A fourth would get none and sit idle: **a group can't use more consumers than the topic has partitions**. Instead of more instances, you can also run more consumer threads in one instance with `--spring.kafka.listener.concurrency=3`.
 

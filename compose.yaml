@@ -12,8 +12,9 @@ services:
     build: .
     image: kafka-simple-app
     ports:
-      # A range, so `--scale app=3` can give each instance its own host port (9001, 9002, 9003).
-      - "9001-9003:9001"
+      # For more instances (consumer group demo), use `docker compose run -d --name app-2 app`.
+      # `run` doesn't publish this port, so the extra instances don't clash with this one.
+      - "9001:9001"
     environment:
       # Inside the compose network, the other services are reached by name. Kafka advertises
       # kafka:19092 (its PLAINTEXT listener) for clients in other containers.
