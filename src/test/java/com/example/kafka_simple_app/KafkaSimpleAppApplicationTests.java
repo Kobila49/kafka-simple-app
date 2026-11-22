@@ -3,6 +3,7 @@ package com.example.kafka_simple_app;
 import com.example.kafka_simple_app.repository.CarRepository;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
@@ -35,12 +36,15 @@ class KafkaSimpleAppApplicationTests {
     @Autowired
     private KafkaListenerEndpointRegistry listenerRegistry;
 
+    @Value("${topic.partitions}")
+    private int partitions;
+
     @Test
     void postedCarTravelsThroughKafkaIntoTheDatabase() throws Exception {
         // The consumer starts reading at the latest offset, so a message sent before it has been
-        // assigned the topic's partition would be skipped. Wait for the assignment first.
+        // assigned the topic's partitions would be skipped. Wait for the assignment first.
         listenerRegistry.getListenerContainers()
-                .forEach(container -> ContainerTestUtils.waitForAssignment(container, 1));
+                .forEach(container -> ContainerTestUtils.waitForAssignment(container, partitions));
 
         mockMvc.perform(post("/kafka-igor/producer")
                         .contentType(MediaType.APPLICATION_JSON)

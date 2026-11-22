@@ -26,8 +26,9 @@ services:
       KAFKA_SHARE_COORDINATOR_STATE_TOPIC_REPLICATION_FACTOR: 1
       KAFKA_SHARE_COORDINATOR_STATE_TOPIC_MIN_ISR: 1
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
-      # The app's topic is created on first use.
-      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+      # Topics have to be declared (the app does it with a NewTopic bean), so a typo in a
+      # topic name fails loudly instead of silently creating a new topic.
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
     healthcheck:
       test: /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1
       interval: 5s

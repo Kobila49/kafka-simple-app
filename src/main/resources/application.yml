@@ -3,6 +3,7 @@ server:
 
 topic:
   name: topic.igor
+  partitions: 3
 
 spring:
   application:

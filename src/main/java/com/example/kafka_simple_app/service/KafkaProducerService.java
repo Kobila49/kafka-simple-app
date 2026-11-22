@@ -21,7 +21,10 @@ public class KafkaProducerService {
     }
 
     public void send(CarDTO carDTO) {
-        log.info("Sending Car Json Serializer: {}", carDTO);
-        kafkaTemplate.send(topicName, carDTO);
+        // The key picks the partition (hash of the key, modulo the partition count), so every
+        // car of the same brand lands on the same partition and is consumed in the order sent.
+        String key = carDTO.brand();
+        log.info("Sending car with key={}: {}", key, carDTO);
+        kafkaTemplate.send(topicName, key, carDTO);
     }
 }
