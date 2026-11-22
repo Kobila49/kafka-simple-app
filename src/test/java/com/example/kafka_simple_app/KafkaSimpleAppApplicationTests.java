@@ -3,7 +3,6 @@ package com.example.kafka_simple_app;
 import com.example.kafka_simple_app.entity.Car;
 import com.example.kafka_simple_app.repository.CarRepository;
 import com.jayway.jsonpath.JsonPath;
-import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.beans.factory.annotation.Value;
@@ -11,8 +10,6 @@ import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.context.annotation.Import;
 import org.springframework.http.MediaType;
-import org.springframework.kafka.config.KafkaListenerEndpointRegistry;
-import org.springframework.kafka.test.utils.ContainerTestUtils;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.math.BigInteger;
@@ -42,22 +39,8 @@ class KafkaSimpleAppApplicationTests {
     @Autowired
     private CarRepository carRepository;
 
-    @Autowired
-    private KafkaListenerEndpointRegistry listenerRegistry;
-
     @Value("${topic.name}")
     private String topicName;
-
-    @Value("${topic.partitions}")
-    private int partitions;
-
-    @BeforeEach
-    void waitForConsumer() {
-        // The consumer starts reading at the latest offset, so a message sent before it has been
-        // assigned the topic's partitions would be skipped. Wait for the assignment first.
-        listenerRegistry.getListenerContainers()
-                .forEach(container -> ContainerTestUtils.waitForAssignment(container, partitions));
-    }
 
     @Test
     void postedCarTravelsThroughKafkaIntoTheDatabase() throws Exception {
@@ -72,7 +55,7 @@ class KafkaSimpleAppApplicationTests {
                 .andExpect(jsonPath("$.partition").isNumber())
                 .andExpect(jsonPath("$.offset").isNumber());
 
-        await().atMost(Duration.ofSeconds(10)).untilAsserted(() ->
+        await().atMost(Duration.ofSeconds(30)).untilAsserted(() ->
                 assertThat(storedCar("XC60")).hasValueSatisfying(car -> {
                     assertThat(car.getBrand()).isEqualTo("Volvo");
                     assertThat(car.getPrice()).isEqualTo(BigInteger.valueOf(45000));

@@ -34,8 +34,17 @@ spring:
         # Kafka only stores bytes. Send plain JSON without Spring's __TypeId__ header,
         # so the message format doesn't depend on Java class names.
         "[spring.json.add.type.headers]": false
+    listener:
+      # Consumer threads in this app instance. Every thread is a member of the consumer group,
+      # and the topic's partitions are divided among all members of all running instances.
+      # With more members than partitions, the extra ones sit idle.
+      concurrency: 1
     consumer:
       group-id: car-db-writer
+      # Where a consumer group with no committed offsets starts reading: "earliest" = from the
+      # beginning of each partition, "latest" (Kafka's default) = only messages sent from now on.
+      # Once the group has committed offsets, it always resumes from them instead.
+      auto-offset-reset: earliest
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.springframework.kafka.support.serializer.JacksonJsonDeserializer
       properties:
