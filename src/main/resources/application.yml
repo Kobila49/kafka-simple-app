@@ -1,0 +1,59 @@
+server:
+  port: 9001
+
+topic:
+  name: cars
+  partitions: 3
+
+spring:
+  application:
+    name: kafka-simple-app
+  jackson:
+    serialization:
+      indent-output: true
+
+  # PostgreSQL from compose.yaml. When started with bootRun, Spring Boot's Docker Compose
+  # support supplies the connection details from the running container instead.
+  datasource:
+    url: jdbc:postgresql://localhost:5432/cars
+    username: cars
+    password: cars
+    hikari:
+      # Give up on a database connection after 3s instead of 30s, so a retry demo with
+      # PostgreSQL stopped doesn't take minutes.
+      connection-timeout: 3000
+  jpa:
+    hibernate:
+      ddl-auto: update
+    open-in-view: false
+
+  # Kafka from compose.yaml. Everything Kafka-related is configured here; Spring Boot builds
+  # the KafkaTemplate, consumer factory and listener container factory from these settings.
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.springframework.kafka.support.serializer.JacksonJsonSerializer
+      properties:
+        # Kafka only stores bytes. Send plain JSON without Spring's __TypeId__ header,
+        # so the message format doesn't depend on Java class names.
+        "[spring.json.add.type.headers]": false
+    listener:
+      # Consumer threads in this app instance. Every thread is a member of the consumer group,
+      # and the topic's partitions are divided among all members of all running instances.
+      # With more members than partitions, the extra ones sit idle.
+      concurrency: 1
+    consumer:
+      group-id: car-db-writer
+      # Where a consumer group with no committed offsets starts reading: "earliest" = from the
+      # beginning of each partition, "latest" (Kafka's default) = only messages sent from now on.
+      # Once the group has committed offsets, it always resumes from them instead.
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      # Wraps the JSON deserializer: a message that isn't valid JSON becomes an error for the
+      # error handler (-> dead-letter topic) instead of failing on every poll forever.
+      value-deserializer: org.springframework.kafka.support.serializer.ErrorHandlingDeserializer
+      properties:
+        "[spring.deserializer.value.delegate.class]": org.springframework.kafka.support.serializer.JacksonJsonDeserializer
+        # ...which means the consumer decides what type the JSON is read into.
+        "[spring.json.value.default.type]": com.example.kafka_simple_app.dto.CarDTO
