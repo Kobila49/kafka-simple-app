@@ -44,6 +44,15 @@ services:
       KAFKA_GROUP_INITIAL_REBALANCE_DELAY_MS: 0
       # Topics must be declared (NewTopic beans), so a typo in a topic name fails loudly.
       KAFKA_AUTO_CREATE_TOPICS_ENABLE: "false"
+      # The default, /tmp/kraft-combined-logs, isn't in a volume, so it's lost with the container.
+      KAFKA_LOG_DIRS: /var/lib/kafka/data
+    volumes:
+      - kafka-data:/var/lib/kafka/data
+    # The image declares these as volumes as well, and `down` would leave an empty anonymous
+    # volume behind for each. Nothing is stored in them here.
+    tmpfs:
+      - /etc/kafka/secrets
+      - /mnt/shared/config
     healthcheck:
       test: /opt/kafka/bin/kafka-broker-api-versions.sh --bootstrap-server localhost:9092 > /dev/null 2>&1
       interval: 5s
@@ -82,4 +91,5 @@ services:
       retries: 20
 
 volumes:
+  kafka-data:
   postgres-data:
