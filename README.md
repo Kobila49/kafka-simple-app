@@ -65,7 +65,7 @@ No JDK needed: the `Dockerfile` builds the app inside a container. The image is 
 ```bash
 docker compose --profile app up -d --build   # build the image and start everything
 docker compose logs -f app                   # follow the app log
-docker compose --profile app down            # stop everything
+docker compose --profile app down            # stop everything, keeping Kafka's and PostgreSQL's data
 ```
 
 The URLs are the same as above. Run the first command again after changing code, and `--build` rebuilds the image. Always pass `--profile app` to `down`: without it, the app containers keep running.
